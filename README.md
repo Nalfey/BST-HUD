@@ -14,13 +14,13 @@ A massive thanks to Eiffel for the pet artwork and Falkirk for his endless knowl
 
 To load the addon:
 ```
-lua load bst_hub
+lua load BST-HUD
 ```
 
 To set a new position for the HUD:
 Drag the text to the desired position then reload the addon to force the images to match the new text position.
 ```
-lua reload bst_hud
+lua reload BST-HUD
 ```
 
 Help:
