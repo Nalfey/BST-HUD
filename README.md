@@ -18,6 +18,7 @@ lua load BST-HUD
 ```
 
 To set a new position for the HUD:
+
 Drag the text to the desired position then reload the addon to force the images to match the new text position.
 ```
 lua reload BST-HUD
