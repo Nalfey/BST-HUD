@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.name = 'BST-HUD'
 _addon.author = 'Nalfey (pet art by Eiffel, Falkirk, and Nalfey)'
-_addon.version = '1.0' 
+_addon.version = '1.1' 
 _addon.command = 'bsthud'
 
 config = require('config')
