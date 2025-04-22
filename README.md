@@ -7,7 +7,9 @@ Shows HP, TP, Ready Moves, Ready Charges, a picture of your pet and a small remi
 A massive thanks to Eiffel for the pet artwork and Falkirk for his endless knowledge about Beastmaster.  
 
 ![BST-HUD 01](https://i.imgur.com/Ut2FDHJ.jpeg)
+
 ![BST-HUD 02](https://i.imgur.com/ctbVxyM.jpeg)
+
 ![BST-HUD 03](https://i.imgur.com/Af7Nt8S.jpeg)
 
 ## Commands
@@ -28,6 +30,9 @@ Help:
 ```
 bsthud help
 ```
+
+### v1.1
+* Added extra NQ jugs pet art.
 
 ### v1.0
 * First release.
