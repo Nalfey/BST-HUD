@@ -30,9 +30,12 @@ Help:
 ```
 bsthud help
 ```
+### v1.3
+* Added attack types (slashing, piercing, blun) and magic type (element, buff, debuff) icons next to teh ready moves
+* Added the charge cost next to each ready move name.  
 
 ### v1.2
-* Added all lv 23~75 and lv 76~114 jug art and new mapping for images to avoid duplicates.
+* Added all lv 23-75 and lv 76-114 jug art and new mapping for images to avoid duplicates.
 
 ### v1.1
 * Added extra NQ jugs pet art.
