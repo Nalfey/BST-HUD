@@ -9,7 +9,6 @@ local pet_image_mappings = {
     -- Mapping of pet names to image files
     -- Format: ['pet_name'] = 'image_file.png'
     
-    -- Beast pets
     ['AgedAngus'] = 'AgedAngus.png',
     ['SunburstMalfik'] = 'AgedAngus.png',
    
