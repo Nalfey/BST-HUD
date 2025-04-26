@@ -27,8 +27,8 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ]]
 
 _addon.name = 'BST-HUD'
-_addon.author = 'Nalfey (pet art by Eiffel, Falkirk, and Nalfey)'
-_addon.version = '1.2' 
+_addon.author = 'Nalfey (pet art by Eiffel and Falkirk)'
+_addon.version = '1.3' 
 _addon.command = 'bsthud'
 
 config = require('config')
@@ -37,6 +37,7 @@ res = require 'resources'
 packets = require('packets')
 images = require('images')
 local pet_mappings = require('pet_image_mappings')
+local ready_move_mappings = require('ready_move_mappings')
 
 -- BST HUD Settings
 display_settings = {
@@ -109,6 +110,22 @@ bst_display:update()  -- Force initial update
 
 -- Initialize path to images directory
 local images_path = windower.addon_path..'images/'
+
+-- Add after images_path and before any function uses damage_icons
+local max_ready_moves = 10 -- Adjust as needed for max number of ready moves
+local icon_types = {'blunt', 'slashing', 'piercing', 'magic', 'dark', 'water', 'earth', 'fire', 'ice', 'wind', 'lightning', 'light', 'dark', 'buff', 'debuff'}
+local damage_icons = {}
+for i = 1, max_ready_moves do
+    damage_icons[i] = {}
+    for _, t in ipairs(icon_types) do
+        damage_icons[i][t] = images.new({
+            texture = {path = images_path..'rdy_'..t..'.png', fit = true},
+            size = {width = 8, height = 8}, -- Make icons 8x8 instead of 16x16
+            draggable = false,
+            visible = false
+        })
+    end
+end
 
 -- Bar settings
 local bar_settings = {
@@ -394,6 +411,13 @@ function update_display()
         pet = windower.ffxi.get_mob_by_target('pet')
     end
 
+    -- Hide all icons first
+    for i = 1, max_ready_moves do
+        for _, t in ipairs(icon_types) do
+            damage_icons[i][t]:hide()
+        end
+    end
+
     if pet then
         local list = ""
         
@@ -405,7 +429,6 @@ function update_display()
         local tp_color = create_color_tag(current_tp_percent or 0, 1000, 'tp')
         
         -- Format HP and TP values with fixed spacing
-        -- Use %4d to ensure TP always takes up 4 spaces (handles 0 to 3000)
         local hp_text = hp_color .. string.format("%15s%4s", "", current_hp_percent .. "%") .. "\\cr"
         local tp_text = tp_color .. string.format("%15s%4d", "", current_tp_percent or 0) .. "\\cr"
         
@@ -415,18 +438,39 @@ function update_display()
         -- Ready Moves section with extra spacing
         list = list .. '\n' .. "Ready Moves - Charges: " .. charges .. " - " .. next_ready_recast .. "\n"
         
-        -- Add Ready moves with proper coloring
+        -- Add Ready moves with proper coloring and icons
+        local move_index = 1
         if type(abilitylist) == 'table' then
-            for key,ability in pairs(abilitylist) do
+            -- Get pet image position and size for icon alignment
+            local icon_x, icon_y_start
+            if pet_image then
+                local img_x, img_y = pet_image:pos()
+                local img_w, img_h = pet_image:size()
+                icon_x = img_x + math.floor((img_w - 16) / 2) + 42 -- center under pet image (16 is icon width)
+                icon_y_start = img_y + img_h + 1
+            end
+            for _, ability in pairs(abilitylist) do
                 if type(ability) == 'number' and res.job_abilities[ability] then
                     local ability_data = res.job_abilities[ability]
                     if ability_data.type == 'Monster' and ability_data.targets and ability_data.targets.Self then
                         local ability_charges = ability_data.mp_cost or 0
-                        if charges >= ability_charges then 
-                            list = list .. '\\cs(0,255,0)' .. ability_data.en .. '\\cr\n'
-                        else
-                            list = list .. '\\cs(150,150,150)' .. ability_data.en .. '\\cr\n'
+                        -- Fix color formatting for texts library and add cost (number only, no 'cr' text)
+                        local cost = ready_move_mappings.get_ready_move_cost(ability_data.en)
+                        local color = (charges >= ability_charges) and '\\cs(0,255,0)' or '\\cs(150,150,150)'
+                        list = list .. color .. ability_data.en .. '  -  ' .. tostring(cost) .. '\n'
+
+                        -- Icon logic: only show if pet_image exists
+                        if move_index <= max_ready_moves and pet_image then
+                            local move_type = ready_move_mappings.get_ready_move_type(ability_data.en)
+                            for _, t in ipairs(icon_types) do
+                                damage_icons[move_index][t]:hide()
+                            end
+                            local icon = damage_icons[move_index][move_type] or damage_icons[move_index]['magic']
+                            local icon_y = icon_y_start + (move_index - 1) * 17 -- 17px vertical spacing
+                            icon:pos(icon_x, icon_y)
+                            icon:show()
                         end
+                        move_index = move_index + 1
                     end
                 end
             end
@@ -451,7 +495,11 @@ function update_display()
         -- Hide bars when no pet
         set_bar_visible(bars.hp, false)
         set_bar_visible(bars.tp, false)
-        
+        for i = 1, max_ready_moves do
+            for _, t in ipairs(icon_types) do
+                damage_icons[i][t]:hide()
+            end
+        end
         if verbose and display_state.pet_was_present then
             windower.add_to_chat(8, 'Pet despawned, hiding display')
             display_state.last_state = nil
