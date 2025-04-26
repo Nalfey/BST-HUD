@@ -31,6 +31,9 @@ Help:
 bsthud help
 ```
 
+### v1.2
+* Added all lv 23~75 and lv 76~114 jug art and new mapping for images to avoid duplicates.
+
 ### v1.1
 * Added extra NQ jugs pet art.
 
