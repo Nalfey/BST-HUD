@@ -8,9 +8,12 @@ A massive thanks to Eiffel for the pet artwork and Falkirk for his endless knowl
 
 ![BST-HUD 01](https://i.imgur.com/Ut2FDHJ.jpeg)
 
-![BST-HUD 02](https://i.imgur.com/ctbVxyM.jpeg)
+![BST-HUD 02](https://i.imgur.com/kmgYl8h.jpeg)
 
-![BST-HUD 03](https://i.imgur.com/Af7Nt8S.jpeg)
+![BST-HUD 03](https://i.imgur.com/1lIZpml.jpg)
+
+![BST-HUD 03](https://i.imgur.com/qPUuPQZ.jpg)
+
 
 ## Commands
 
