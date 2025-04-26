@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.name = 'BST-HUD'
 _addon.author = 'Nalfey (pet art by Eiffel, Falkirk, and Nalfey)'
-_addon.version = '1.1' 
+_addon.version = '1.2' 
 _addon.command = 'bsthud'
 
 config = require('config')
@@ -36,6 +36,7 @@ texts = require('texts')
 res = require 'resources'
 packets = require('packets')
 images = require('images')
+local pet_mappings = require('pet_image_mappings')
 
 -- BST HUD Settings
 display_settings = {
@@ -1063,13 +1064,13 @@ function update_pet_image()
     end
     
     if petactive and petname then
-        -- Always try lowercase version of filename first
-        local image_name = string.lower(petname:gsub("%s+", ""):gsub("[^%w]", ""))
-        local image_path = images_path..image_name..'.png'
+        -- Get the image file name from the mapping system
+        local image_name = pet_mappings.get_pet_image(petname)
+        local image_path = images_path..image_name
         
         -- Check if file exists, if not use default
         if not windower.file_exists(image_path) then
-            image_path = images_path..'BraveHeroGlenn.png'
+            image_path = images_path..pet_mappings.get_pet_image('default')
             -- Check if default image exists
             if not windower.file_exists(image_path) then
                 windower.add_to_chat(8, 'Default image not found: '..image_path)
