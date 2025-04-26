@@ -34,7 +34,7 @@ Help:
 bsthud help
 ```
 ### v1.3
-* Added attack types (slashing, piercing, blun) and magic type (element, buff, debuff) icons next to the ready moves
+* Added attack types (slashing, piercing, blunt) and magic type (element, buff, debuff) icons next to the ready moves
 * Added the charge cost next to each ready move name.  
 
 ### v1.2
