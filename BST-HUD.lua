@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.name = 'BST-HUD'
 _addon.author = 'Nalfey (pet art by Eiffel and Falkirk)'
-_addon.version = '1.3' 
+_addon.version = '1.4' 
 _addon.command = 'bsthud'
 
 config = require('config')
@@ -609,7 +609,7 @@ windower.register_event('incoming chunk',function(id,data)
         if mainweapon == "Charmer's Merlin" or subweapon == "Charmer's Merlin" then 
             equip_reduction = equip_reduction + 5
         end
-        if legs == "Desultor Tassets" then
+        if legs == "Desultor Tassets" or legs == "Gleti's Breeches" then
             equip_reduction = equip_reduction + 5
         end
         expect_ready_move = false
@@ -752,6 +752,7 @@ windower.register_event('load', function()
         else
             jobpoints = 0
         end    
+        update_equip_reduction()  -- Add equipment check on load
     end
     if self.merits.sic_recast == 5 then
         merits = 10
@@ -843,6 +844,7 @@ windower.register_event('zone change', function()
     else
         jobpoints = 0
     end    
+    update_equip_reduction()  -- Add equipment check on zone change
     if self.merits.sic_recast == 5 then
         merits = 10
     elseif self.merits.sic_recast == 4 then
@@ -877,6 +879,7 @@ windower.register_event('job change', function()
     else
         jobpoints = 0
     end    
+    update_equip_reduction()  -- Add equipment check on job change
     if self.merits.sic_recast == 5 then
         merits = 10
     elseif self.merits.sic_recast == 4 then
@@ -1270,6 +1273,29 @@ function reset_stored_tp()
     current_tp_percent = 0
     last_valid_tp_time = 0
     if verbose then windower.add_to_chat(8, 'Reset stored TP values') end
+end
+
+-- Function to check equipment and update equip_reduction
+function update_equip_reduction()
+    local gear = windower.ffxi.get_items()
+    if not gear then return end
+    
+    local mainweapon = res.items[windower.ffxi.get_items(gear.equipment.main_bag, gear.equipment.main).id].en
+    local subweapon = res.items[windower.ffxi.get_items(gear.equipment.sub_bag, gear.equipment.sub).id].en
+    local legs = res.items[windower.ffxi.get_items(gear.equipment.legs_bag, gear.equipment.legs).id].en
+
+    equip_reduction = 0
+    if mainweapon == "Charmer's Merlin" or subweapon == "Charmer's Merlin" then 
+        equip_reduction = equip_reduction + 5
+    end
+    if legs == "Desultor Tassets" or legs == "Gleti's Breeches" then
+        equip_reduction = equip_reduction + 5
+    end
+    
+    if verbose then
+        windower.add_to_chat(8, string.format('Equipment reduction updated: %d (Main: %s, Sub: %s, Legs: %s)', 
+            equip_reduction, mainweapon, subweapon, legs))
+    end
 end
 
 
