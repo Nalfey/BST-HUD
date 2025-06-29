@@ -28,7 +28,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 _addon.name = 'BST-HUD'
 _addon.author = 'Nalfey (pet art by Eiffel and Falkirk)'
-_addon.version = '1.4' 
+_addon.version = '1.5' 
 _addon.command = 'bsthud'
 
 config = require('config')
@@ -198,6 +198,11 @@ local display_state = {
 -- Add at the top with other global variables
 local stored_tp = 0
 local last_valid_tp_time = 0
+local bst_hud_frame_count = 0
+local last_hp_check = 0
+local hp_check_delay = 0.1  -- Check HP every 0.1 seconds
+local last_hp_update = 0
+local hp_update_threshold = 0.2  -- Minimum time between HP updates in seconds
 
 -- Function to convert hex color to RGB values
 function hex_to_rgb(hex)
@@ -338,7 +343,9 @@ function update_bar(bar, current, max)
     
     local diff = bar.target_value - bar.current_value
     if math.abs(diff) > 0.001 then
-        bar.current_value = bar.current_value + (diff * bar_settings.anim_speed)
+        -- Make HP changes smoother by using a smaller animation speed for small changes
+        local anim_speed = math.abs(diff) < 0.05 and bar_settings.anim_speed * 0.5 or bar_settings.anim_speed
+        bar.current_value = bar.current_value + (diff * anim_speed)
         
         -- Calculate new width using full bar width
         local new_width = math.floor(bar_settings.width * bar.current_value)
@@ -403,6 +410,7 @@ function update_display()
         windower.add_to_chat(8, 'Update Display - Pet: ' .. (pet and 'exists' or 'nil') .. 
             ', PetActive: ' .. tostring(petactive) .. 
             ', PetName: ' .. (petname or 'nil') ..
+            ', HP%: ' .. tostring(current_hp_percent) ..
             ', TP: ' .. tostring(current_tp_percent))
     end
 
@@ -432,10 +440,10 @@ function update_display()
         local hp_text = hp_color .. string.format("%15s%4s", "", current_hp_percent .. "%") .. "\\cr"
         local tp_text = tp_color .. string.format("%15s%4d", "", current_tp_percent or 0) .. "\\cr"
         
-        -- Add values with spacing between HP and TP (increased middle padding)
+        -- Add values with spacing between HP and TP
         list = list .. string.format("%-25s%10s%-25s", hp_text, "", tp_text) .. '\n'
         
-        -- Ready Moves section with extra spacing
+        -- Ready Moves section
         list = list .. '\n' .. "Ready Moves - Charges: " .. charges .. " - " .. next_ready_recast .. "\n"
         
         -- Add Ready moves with proper coloring and icons
@@ -482,7 +490,7 @@ function update_display()
             set_bar_visible(bars.hp, true)
         end
         
-        -- Update TP bar only if we have a valid TP value
+        -- Update TP bar
         if bars.tp and current_tp_percent then
             update_bar(bars.tp, current_tp_percent, 1000)
             set_bar_visible(bars.tp, true)
@@ -535,15 +543,48 @@ windower.register_event('time change', function()
 end)
 
 windower.register_event('prerender', function()
-    if self then
-        if self.main_job == 'BST' then
-            duration = windower.ffxi.get_ability_recasts()[102]
-            if duration then 
-                chargebase = (30 - merits - jobpoints - equip_reduction)
-                charges = math.floor(((chargebase * 3) - duration) / chargebase)
-                next_ready_recast = math.floor(math.fmod(duration,chargebase))
-                update_display()
+    bst_hud_frame_count = bst_hud_frame_count + 1
+    if bst_hud_frame_count % 2 == 0 then -- update every 2 frames
+        if self then
+            if self.main_job == 'BST' then
+                duration = windower.ffxi.get_ability_recasts()[102]
+                if duration then 
+                    chargebase = (30 - merits - jobpoints - equip_reduction)
+                    charges = math.floor(((chargebase * 3) - duration) / chargebase)
+                    next_ready_recast = math.floor(math.fmod(duration,chargebase))
+                end
             end
+        end
+        
+        -- Always check for pet HP changes
+        local current_time = os.clock()
+        if current_time - last_hp_check >= hp_check_delay then
+            last_hp_check = current_time
+            
+            if petactive then
+                -- Get fresh pet data directly from memory
+                local current_pet = windower.ffxi.get_mob_by_target('pet')
+                if current_pet then
+                    -- Always check HP changes
+                    if current_pet.hpp ~= nil and current_pet.hpp ~= current_hp_percent then
+                        if verbose then 
+                            windower.add_to_chat(8, string.format('HP Update from prerender - Old: %d%%, New: %d%%', 
+                                current_hp_percent or 0, current_pet.hpp))
+                        end
+                        current_hp_percent = current_pet.hpp
+                        current_hp = current_pet.hp or 0
+                        if current_pet.hpp > 0 and current_pet.hp then
+                            max_hp = math.floor(current_pet.hp * 100 / current_pet.hpp)
+                        end
+                        update_display()
+                    end
+                end
+            end
+        end
+        
+        -- Force display update every 2 frames for smoother animations
+        if petactive then
+            update_display()
         end
     end
 end)
@@ -598,24 +639,34 @@ windower.register_event('incoming chunk',function(id,data)
         end
     end
     
-    -- Keep existing packet handlers
-    if id == 0x119 and expect_ready_move then
-        local gear = windower.ffxi.get_items()
-        local mainweapon = res.items[windower.ffxi.get_items(gear.equipment.main_bag, gear.equipment.main).id].en
-        local subweapon = res.items[windower.ffxi.get_items(gear.equipment.sub_bag, gear.equipment.sub).id].en
-        local legs = res.items[windower.ffxi.get_items(gear.equipment.legs_bag, gear.equipment.legs).id].en
-    
-        equip_reduction = 0
-        if mainweapon == "Charmer's Merlin" or subweapon == "Charmer's Merlin" then 
-            equip_reduction = equip_reduction + 5
+    -- Add HP update packet handling (0x37)
+    if id == 0x37 then
+        if petactive and pet then
+            local current_time = os.clock()
+            -- Check if enough time has passed since last update
+            if current_time - last_hp_update >= hp_update_threshold then
+                local current_pet = windower.ffxi.get_mob_by_target('pet')
+                if current_pet then
+                    local new_hp_percent = current_pet.hpp
+                    if new_hp_percent and new_hp_percent ~= current_hp_percent then
+                        if verbose then 
+                            windower.add_to_chat(8, string.format('HP Update from packet - Old: %d%%, New: %d%%', 
+                                current_hp_percent or 0, new_hp_percent))
+                        end
+                        current_hp_percent = new_hp_percent
+                        current_hp = current_pet.hp or 0
+                        if current_pet.hpp and current_pet.hpp > 0 and current_pet.hp then
+                            max_hp = math.floor(current_pet.hp * 100 / current_pet.hpp)
+                        end
+                        last_hp_update = current_time
+                        update_display()
+                    end
+                end
+            end
         end
-        if legs == "Desultor Tassets" or legs == "Gleti's Breeches" then
-            equip_reduction = equip_reduction + 5
-        end
-        expect_ready_move = false
     end
-
-    -- PetTP packet handling
+    
+    -- Keep existing packet handlers
     if id == 0x44 then
         if data:unpack('C', 0x05) == 0x12 then    -- puppet update
             local new_current_hp, new_max_hp, new_current_mp, new_max_mp = data:unpack('HHHH', 0x069)
@@ -678,12 +729,27 @@ windower.register_event('incoming chunk',function(id,data)
                 local new_mp_percent = packet['Current MP%']
                 local new_tp_percent = packet['Pet TP']
                 
-                -- Only update TP if it's a valid new value and different from current
-                if new_tp_percent and new_tp_percent >= 0 and new_tp_percent ~= current_tp_percent then
-                    if verbose then 
-                        windower.add_to_chat(8, 'TP Update - Old: ' .. tostring(current_tp_percent) .. ' New: ' .. tostring(new_tp_percent))
+                -- Update HP immediately if changed
+                if new_hp_percent and new_hp_percent ~= current_hp_percent then
+                    current_hp_percent = new_hp_percent
+                    -- Update current_hp based on percentage if possible
+                    if max_hp and max_hp > 0 then
+                        current_hp = math.floor(max_hp * new_hp_percent / 100)
                     end
-                    current_tp_percent = new_tp_percent
+                end
+                
+                -- Handle TP updates
+                if new_tp_percent and new_tp_percent >= 0 then
+                    local current_time = os.time()
+                    if new_tp_percent > stored_tp or 
+                       (current_time - last_valid_tp_time) > 3 or 
+                       stored_tp == 0 then
+                        stored_tp = new_tp_percent
+                        current_tp_percent = new_tp_percent
+                        last_valid_tp_time = current_time
+                    else
+                        current_tp_percent = stored_tp
+                    end
                 end
                 
                 if newpet or (new_hp_percent ~= current_hp_percent) or (new_mp_percent ~= current_mp_percent) then
@@ -837,6 +903,9 @@ end)
 
 windower.register_event('zone change', function()
     coroutine.sleep(2)
+    -- Destroy all UI elements first
+    destroy_bars()
+    
     bst_display:pos(settings.pos.x, settings.pos.y)
     self = windower.ffxi.get_player()
     if self.job_points.bst.jp_spent >= 100 then
@@ -1031,64 +1100,50 @@ windower.register_event('action', function(act)
     end
 end)
 
--- Function to make display visible
-function make_visible()
-    -- Set pet variable first
-    pet = windower.ffxi.get_mob_by_target('pet')
-    if pet then
-        petactive = true
-        petname = pet.name
-        -- Add nil checks for all pet stats
-        current_hp = pet.hp or 0
-        current_hp_percent = pet.hpp or 0
-        max_hp = (pet.hpp and pet.hpp > 0 and pet.hp) and math.floor(pet.hp * 100 / pet.hpp) or 0
-        
-        -- Only update TP if it's actually 0 or nil (preserve existing TP value)
-        if not current_tp_percent or current_tp_percent == 0 then
-            current_tp_percent = pet.tp or 0
-            if verbose then 
-                windower.add_to_chat(8, 'Pet TP initialized in make_visible: ' .. tostring(current_tp_percent))
-            end
-        else
-            if verbose then 
-                windower.add_to_chat(8, 'Preserving existing TP value: ' .. tostring(current_tp_percent))
-            end
-        end
-        
-        current_mp = pet.mp or 0
-        current_mp_percent = pet.mpp or 0
-        max_mp = (pet.mpp and pet.mpp > 0 and pet.mp) and math.floor(pet.mp * 100 / pet.mpp) or 0
-        
-        -- Get abilities
-        local abilities = windower.ffxi.get_abilities()
-        abilitylist = abilities and abilities.job_abilities or {}
-        
-        -- Update display first
-        update_display()
-        
-        -- Then update image if text is visible
-        if bst_display:visible() and #(bst_display:text() or '') > 0 then
-            update_pet_image()
-        end
-        
-        if verbose then 
-            windower.add_to_chat(8, 'Display Visible')
-            windower.add_to_chat(8, 'Text content: ' .. (#(bst_display:text() or '') > 0 and 'Has content' or 'Empty'))
-        end
+-- Function to destroy bars
+function destroy_bars()
+    if bars.hp then
+        if bars.hp.bg then bars.hp.bg:destroy() bars.hp.bg = nil end
+        if bars.hp.fg then bars.hp.fg:destroy() bars.hp.fg = nil end
+        if bars.hp.glow_mid then bars.hp.glow_mid:destroy() bars.hp.glow_mid = nil end
+        if bars.hp.glow_sides then bars.hp.glow_sides:destroy() bars.hp.glow_sides = nil end
+    end
+    
+    if bars.tp then
+        if bars.tp.bg then bars.tp.bg:destroy() bars.tp.bg = nil end
+        if bars.tp.fg then bars.tp.fg:destroy() bars.tp.fg = nil end
+        if bars.tp.glow_mid then bars.tp.glow_mid:destroy() bars.tp.glow_mid = nil end
+        if bars.tp.glow_sides then bars.tp.glow_sides:destroy() bars.tp.glow_sides = nil end
     end
 end
 
--- Function to make display invisible
+-- Modify make_invisible function
 function make_invisible()
     if petactive then
+        -- Hide the display text
         bst_display:text('')
         bst_display:visible(false)
+        
+        -- Destroy all bar images
+        destroy_bars()
+        
+        -- Hide all ready move icons
+        for i = 1, max_ready_moves do
+            for _, t in ipairs(icon_types) do
+                if damage_icons[i][t] then
+                    damage_icons[i][t]:hide()
+                end
+            end
+        end
+        
+        -- Hide and destroy pet image
         if pet_image then
             pet_image:hide()
             pet_image:destroy()
             pet_image = nil
         end
-        if verbose then windower.add_to_chat(8, 'Display Invisible') end
+        
+        if verbose then windower.add_to_chat(8, 'Display Invisible - Destroying all UI elements') end
     end
     
     -- Reset all variables except stored_tp
@@ -1105,6 +1160,69 @@ function make_invisible()
     current_mp_percent = 0
     -- Keep stored_tp and current_tp_percent as is
     timercountdown = 5
+end
+
+-- Modify make_visible function
+function make_visible()
+    -- Set pet variable first
+    pet = windower.ffxi.get_mob_by_target('pet')
+    if pet then
+        petactive = true
+        petname = pet.name
+        -- Add nil checks for all pet stats
+        current_hp = (pet.hp ~= nil) and pet.hp or 0
+        current_hp_percent = (pet.hpp ~= nil) and pet.hpp or 0
+        -- Only calculate max_hp if we have valid values
+        if pet.hpp and pet.hpp > 0 and pet.hp then
+            max_hp = math.floor(pet.hp * 100 / pet.hpp)
+        else
+            max_hp = 0
+        end
+        
+        -- Only update TP if it's actually 0 or nil (preserve existing TP value)
+        if not current_tp_percent or current_tp_percent == 0 then
+            current_tp_percent = (pet.tp ~= nil) and pet.tp or 0
+            if verbose then 
+                windower.add_to_chat(8, 'Pet TP initialized in make_visible: ' .. tostring(current_tp_percent))
+            end
+        else
+            if verbose then 
+                windower.add_to_chat(8, 'Preserving existing TP value: ' .. tostring(current_tp_percent))
+            end
+        end
+        
+        current_mp = (pet.mp ~= nil) and pet.mp or 0
+        current_mp_percent = (pet.mpp ~= nil) and pet.mpp or 0
+        -- Only calculate max_mp if we have valid values
+        if pet.mpp and pet.mpp > 0 and pet.mp then
+            max_mp = math.floor(pet.mp * 100 / pet.mpp)
+        else
+            max_mp = 0
+        end
+        
+        -- Get abilities
+        local abilities = windower.ffxi.get_abilities()
+        abilitylist = abilities and abilities.job_abilities or {}
+        
+        -- Create bars at the correct position
+        local text_x = bst_display:pos_x()
+        local text_y = bst_display:pos_y()
+        create_bar(bars.hp, text_x, text_y + bar_settings.offset.y, true)  -- HP bar on left
+        create_bar(bars.tp, text_x, text_y + bar_settings.offset.y, false) -- TP bar on right
+        
+        -- Update display first
+        update_display()
+        
+        -- Then update image if text is visible
+        if bst_display:visible() and #(bst_display:text() or '') > 0 then
+            update_pet_image()
+        end
+        
+        if verbose then 
+            windower.add_to_chat(8, 'Display Visible')
+            windower.add_to_chat(8, 'Text content: ' .. (#(bst_display:text() or '') > 0 and 'Has content' or 'Empty'))
+        end
+    end
 end
 
 -- Function to update pet image
@@ -1297,5 +1415,58 @@ function update_equip_reduction()
             equip_reduction, mainweapon, subweapon, legs))
     end
 end
+
+-- Add entity update handler for continuous monitoring
+windower.register_event('entity update', function(entity)
+    if petactive and pet and entity.id == pet.id then
+        local current_time = os.clock()
+        if current_time - last_hp_update >= hp_update_threshold then
+            if entity.hpp ~= nil and entity.hpp ~= current_hp_percent then
+                if verbose then 
+                    windower.add_to_chat(8, string.format('HP Update from entity - Old: %d%%, New: %d%%', 
+                        current_hp_percent or 0, entity.hpp))
+                end
+                current_hp_percent = entity.hpp
+                current_hp = entity.hp or 0
+                if entity.hpp > 0 and entity.hp then
+                    max_hp = math.floor(entity.hp * 100 / entity.hpp)
+                end
+                last_hp_update = current_time
+                update_display()
+            end
+        end
+    end
+end)
+
+-- Add status update packet handler
+windower.register_event('incoming chunk', function(id, data)
+    -- Status update packet (0x0E7)
+    if id == 0x0E7 then
+        if petactive and pet then
+            local packet = packets.parse('incoming', data)
+            if packet and packet.ID == pet.id then
+                local current_time = os.clock()
+                if current_time - last_hp_update >= hp_update_threshold then
+                    local current_pet = windower.ffxi.get_mob_by_target('pet')
+                    if current_pet then
+                        if current_pet.hpp ~= current_hp_percent then
+                            if verbose then 
+                                windower.add_to_chat(8, string.format('HP Update from status - Old: %d%%, New: %d%%', 
+                                    current_hp_percent or 0, current_pet.hpp))
+                            end
+                            current_hp_percent = current_pet.hpp
+                            current_hp = current_pet.hp or 0
+                            if current_pet.hpp > 0 and current_pet.hp then
+                                max_hp = math.floor(current_pet.hp * 100 / current_pet.hpp)
+                            end
+                            last_hp_update = current_time
+                            update_display()
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
 
 
