@@ -35,7 +35,7 @@ bsthud help
 ```
 
 ### v1.5
-update to the refresh frequency of the HP/TP bars  
+* Update to the refresh frequency of the HP/TP bars  
 
 ### v1.4
 * Ready timer tweak
