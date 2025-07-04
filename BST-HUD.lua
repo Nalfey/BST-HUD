@@ -242,6 +242,18 @@ end
 
 -- Function to create a bar
 function create_bar(bar, x, y, is_hp)
+    -- Check if we should create bars
+    local info = windower.ffxi.get_info()
+    if info.zone and res.zones[info.zone] and res.zones[info.zone].type == "town" then
+        if verbose then windower.add_to_chat(8, 'In town - skipping bar creation') end
+        return
+    end
+    
+    if not petactive then
+        if verbose then windower.add_to_chat(8, 'No pet active - skipping bar creation') end
+        return
+    end
+
     -- Initialize values first
     bar.current_value = 0
     bar.target_value = 0
@@ -842,17 +854,21 @@ windower.register_event('load', function()
         end
     end
 
-    -- Create bars at the correct position
-    local text_x = bst_display:pos_x()
-    local text_y = bst_display:pos_y()
-    
-    -- Create both bars at the same Y position
-    create_bar(bars.hp, text_x, text_y + bar_settings.offset.y, true)  -- HP bar on left
-    create_bar(bars.tp, text_x, text_y + bar_settings.offset.y, false) -- TP bar on right
+    -- Initialize display position
+    bst_display:pos(settings.pos.x, settings.pos.y)
 
-    -- Check for pet and get initial values
+    -- Only create bars if we have a pet and are not in a town
     if windower.ffxi.get_player() then
         local pet = windower.ffxi.get_mob_by_target('pet')
+        local info = windower.ffxi.get_info()
+        
+        -- Check if we're in a town
+        if info.zone and res.zones[info.zone] and res.zones[info.zone].type == "town" then
+            if verbose then windower.add_to_chat(8, 'Loading in town - not creating bars') end
+            make_invisible()
+            return
+        end
+        
         if pet then
             -- Get initial TP value directly from pet data
             current_tp_percent = pet.tp
@@ -863,6 +879,9 @@ windower.register_event('load', function()
                 make_visible()
                 update_display()
             end
+        else
+            if verbose then windower.add_to_chat(8, 'No pet found on load - not creating bars') end
+            make_invisible()
         end
     end
 end)
